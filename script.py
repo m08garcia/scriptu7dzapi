@@ -98,7 +98,7 @@ def ejecutar_ffmpeg(url, key_decryption, nombre_archivo):
     """Ejecuta ffmpeg para descargar y desencriptar el contenido"""
     try:
         comando = (
-            f'ffmpeg -headers "Referer: https://ott.zapitv.com" '
+            f'ffmpeg -headers "Referer: https://ver.zapitv.com" '
             f'-user_agent "{obtener_user_agent()}" '
         )
         
