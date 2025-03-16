@@ -137,36 +137,44 @@ def extraer_key_decryption(key_string):
 def ejecutar_ffmpeg(url, key_decryption, nombre_archivo):
     """Ejecuta ffmpeg para descargar y desencriptar el contenido"""
     try:
-        comando = [
+        # Construir comando base
+        comando_base = [
             'ffmpeg',
             '-headers', f'Referer: https://ver.zapitv.com',
-            '-user_agent', obtener_user_agent(),
-            '-cenc_decryption_key', key_decryption,
-            '-i', url,
-            '-c', 'copy',
-            '-map', '0:2',
-            '-map', '0:a',
-            '-map', '0:s?',
-            nombre_archivo
-        ] if key_decryption else [
-            'ffmpeg',
-            '-headers', f'Referer: https://ver.zapitv.com',
-            '-user_agent', obtener_user_agent(),
-            '-i', url,
-            '-c', 'copy',
-            '-map', '0:2',
-            '-map', '0:a',
-            '-map', '0:s?',
-            nombre_archivo
+            '-user_agent', obtener_user_agent()
         ]
-        
+
+        # Añadir clave de decriptación si existe
+        if key_decryption:
+            comando_base.extend(['-cenc_decryption_key', f'"{key_decryption}"'])
+
+        # Añadir parámetros restantes entrecomillados
+        comando_final = comando_base + [
+            '-i', f'"{url}"',
+            '-c', 'copy',
+            '-map', '0:2',
+            '-map', '0:a',
+            '-map', '0:s?',
+            f'"{nombre_archivo}"'
+        ]
+
+        # Crear versión segura para ejecución (sin comillas internas)
+        comando_ejecucion = []
+        for item in comando_final:
+            comando_ejecucion.append(item.replace('"', ''))
+
         print("\n[FFMPEG] Comando generado:")
-        print(' '.join(f'"{arg}"' if ' ' in arg else arg for arg in comando))
+        print(' '.join(comando_final))
+
+        # Ejecutar con shell=False para mayor seguridad
+        result = subprocess.run(comando_ejecucion, check=True)
+        return True
         
-        result = subprocess.run(comando, shell=True)
-        return result.returncode == 0
+    except subprocess.CalledProcessError as e:
+        print(f"\n[ERROR] FFmpeg falló con código: {e.returncode}")
+        return False
     except Exception as e:
-        print(f"Error ejecutando ffmpeg: {str(e)}")
+        print(f"\n[ERROR] {str(e)}")
         return False
 
 def verificar_url(url):
