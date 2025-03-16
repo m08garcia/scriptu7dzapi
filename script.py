@@ -257,7 +257,7 @@ def main():
         ejecutar_script()
         if input("\n¿Descargar otro contenido? (s/n): ").lower() != 's':
             break
-    print("\n¡Gracias por usar el script! - By Archivos M08g")
+    print("\n¡Gracias por usar el script! - Script hecho por Archivos M08g")
 
 if __name__ == "__main__":
     main()
