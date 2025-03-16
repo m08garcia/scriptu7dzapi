@@ -128,7 +128,7 @@ def verificar_url(url):
     try:
         cabeceras = {
             "User-Agent": obtener_user_agent(),
-            "Referer": "https://ott.zapitv.com"
+            "Referer": "https://ver.zapitv.com"
         }
         
         response = requests.head(url, headers=cabeceras, timeout=10)
