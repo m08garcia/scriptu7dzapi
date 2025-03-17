@@ -24,7 +24,7 @@ def descargar_script_actualizado():
         
         # Comparar contenidos
         if contenido_remoto.strip() == contenido_local.strip():
-            print("\n[INFO] El script ya está actualizado")
+            print("\n[INFO] Estás usando la última versión")
             return None
             
         # Guardar actualización si hay diferencias
@@ -45,7 +45,7 @@ def actualizar_script():
         try:
             os.replace(script_actualizado, __file__)
             print("[ACTUALIZACIÓN] ¡Actualización aplicada con éxito!")
-            print("[ACTUALIZACIÓN] Por favor reinicia el script para cargar los cambios")
+            print("[ACTUALIZACIÓN] Por favor vuelva a ejecutar el script para actualizar")
             sys.exit(0)
         except Exception as e:
             print(f"[ERROR] Fallo al aplicar actualización: {str(e)}")
