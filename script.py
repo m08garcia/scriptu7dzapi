@@ -5,6 +5,7 @@ import datetime
 import re
 import sys
 import requests
+import json
 
 # URL del script en Vercel
 VERCEL_SCRIPT_URL = "https://scriptu7dzapi.vercel.app/script.py"
@@ -134,8 +135,149 @@ def extraer_key_decryption(key_string):
     parts = key_string.split(':')
     return parts[1] if len(parts) == 2 else key_string
 
+# ========== NUEVAS FUNCIONES ==========
+def ejecutar_ffprobe(url, key_decryption):
+    """Ejecuta ffprobe para obtener información sobre las pistas disponibles"""
+    try:
+        # Construir comando base
+        comando_base = [
+            'ffprobe',
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_streams',
+            '-headers', f'Referer: https://ver.zapitv.com',
+            '-user_agent', obtener_user_agent()
+        ]
+        
+        # Añadir clave de decriptación si existe
+        if key_decryption:
+            comando_base.extend(['-cenc_decryption_key', key_decryption])
+        
+        # Añadir URL
+        comando_base.append(url)
+        
+        print("\n[FFPROBE] Analizando pistas disponibles...")
+        result = subprocess.run(comando_base, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"\n[ERROR] FFprobe falló: {result.stderr}")
+            return None
+        
+        return json.loads(result.stdout)
+    except Exception as e:
+        print(f"\n[ERROR] Error al ejecutar ffprobe: {str(e)}")
+        return None
+
+def seleccionar_mejor_pista(streams_data):
+    """Selecciona la pista de video de mayor calidad"""
+    if not streams_data or 'streams' not in streams_data:
+        print("\n[ERROR] No se encontraron pistas de video para analizar")
+        return None
+    
+    video_streams = [s for s in streams_data['streams'] if s.get('codec_type') == 'video']
+    if not video_streams:
+        print("\n[ERROR] No se encontraron pistas de video")
+        return None
+    
+    # Ordenar por resolución (multiplicar ancho x alto)
+    video_streams.sort(key=lambda x: 
+        int(x.get('width', 0)) * int(x.get('height', 0)), 
+        reverse=True
+    )
+    
+    mejor_pista = video_streams[0]
+    print(f"\n[INFO] Mejor pista de video encontrada:")
+    print(f"- Índice: {mejor_pista.get('index')}")
+    print(f"- Resolución: {mejor_pista.get('width')}x{mejor_pista.get('height')}")
+    print(f"- Codec: {mejor_pista.get('codec_name')}")
+    print(f"- Bitrate: {int(mejor_pista.get('bit_rate', 0))/1000:.2f} kbps")
+    
+    return mejor_pista
+
+def mostrar_info_pistas(streams_data):
+    """Muestra información sobre todas las pistas disponibles"""
+    if not streams_data or 'streams' not in streams_data:
+        return
+    
+    video_streams = [s for s in streams_data['streams'] if s.get('codec_type') == 'video']
+    audio_streams = [s for s in streams_data['streams'] if s.get('codec_type') == 'audio']
+    subtitle_streams = [s for s in streams_data['streams'] if s.get('codec_type') == 'subtitle']
+    
+    print("\n[INFO] Pistas disponibles:")
+    print(f"- Video: {len(video_streams)} pistas")
+    print(f"- Audio: {len(audio_streams)} pistas")
+    print(f"- Subtítulos: {len(subtitle_streams)} pistas")
+    
+    if audio_streams:
+        print("\n[INFO] Pistas de audio:")
+        for i, audio in enumerate(audio_streams):
+            lang = audio.get('tags', {}).get('language', 'desconocido')
+            print(f"  {i+1}. Índice: {audio.get('index')}, Idioma: {lang}, Codec: {audio.get('codec_name')}")
+    
+    if subtitle_streams:
+        print("\n[INFO] Pistas de subtítulos:")
+        for i, sub in enumerate(subtitle_streams):
+            lang = sub.get('tags', {}).get('language', 'desconocido')
+            print(f"  {i+1}. Índice: {sub.get('index')}, Idioma: {lang}")
+
+def ejecutar_ffmpeg_mejorado(url, key_decryption, nombre_archivo, streams_data):
+    """Ejecuta ffmpeg para descargar y desencriptar el contenido con la mejor pista de video y todas las pistas de audio y subtítulos"""
+    try:
+        # Mostrar información de todas las pistas
+        mostrar_info_pistas(streams_data)
+        
+        # Obtener la mejor pista de video
+        mejor_pista = seleccionar_mejor_pista(streams_data)
+        if not mejor_pista:
+            return ejecutar_ffmpeg(url, key_decryption, nombre_archivo)  # Usar el método original como fallback
+        
+        # Construir comando base
+        comando_base = [
+            'ffmpeg',
+            '-headers', f'Referer: https://ver.zapitv.com',
+            '-user_agent', obtener_user_agent()
+        ]
+
+        # Añadir clave de decriptación si existe
+        if key_decryption:
+            comando_base.extend(['-cenc_decryption_key', f'"{key_decryption}"'])
+
+        # Añadir URL de entrada
+        comando_final = comando_base + ['-i', f'"{url}"', '-c', 'copy']
+        
+        # Mapear sólo la mejor pista de video
+        comando_final.extend(['-map', f'0:{mejor_pista.get("index")}'])
+        
+        # Mapear TODAS las pistas de audio
+        comando_final.extend(['-map', '0:a'])
+        
+        # Mapear TODAS las pistas de subtítulos (si existen)
+        comando_final.extend(['-map', '0:s?'])
+        
+        # Añadir nombre del archivo
+        comando_final.append(f'"{nombre_archivo}"')
+
+        # Crear versión segura para ejecución (sin comillas internas)
+        comando_ejecucion = []
+        for item in comando_final:
+            comando_ejecucion.append(item.replace('"', ''))
+
+        print("\n[FFMPEG] Comando generado:")
+        print(' '.join(comando_final))
+
+        # Ejecutar con shell=False para mayor seguridad
+        result = subprocess.run(comando_ejecucion, check=True)
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"\n[ERROR] FFmpeg falló con código: {e.returncode}")
+        return False
+    except Exception as e:
+        print(f"\n[ERROR] {str(e)}")
+        return False
+
 def ejecutar_ffmpeg(url, key_decryption, nombre_archivo):
-    """Ejecuta ffmpeg para descargar y desencriptar el contenido"""
+    """Función original de ffmpeg como fallback"""
     try:
         # Construir comando base
         comando_base = [
@@ -152,7 +294,7 @@ def ejecutar_ffmpeg(url, key_decryption, nombre_archivo):
         comando_final = comando_base + [
             '-i', f'"{url}"',
             '-c', 'copy',
-            '-map', '0:2',
+            '-map', '0:v',
             '-map', '0:a',
             '-map', '0:s?',
             f'"{nombre_archivo}"'
@@ -163,7 +305,7 @@ def ejecutar_ffmpeg(url, key_decryption, nombre_archivo):
         for item in comando_final:
             comando_ejecucion.append(item.replace('"', ''))
 
-        print("\n[FFMPEG] Comando generado:")
+        print("\n[FFMPEG] Comando generado (fallback):")
         print(' '.join(comando_final))
 
         # Ejecutar con shell=False para mayor seguridad
@@ -243,8 +385,11 @@ def ejecutar_script():
             print("Descarga cancelada")
             return
         
+        print("\n[ANÁLISIS] Obteniendo información de las pistas...")
+        streams_data = ejecutar_ffprobe(url_final, clave_decripcion)
+        
         print("\n[DESCARGA] Iniciando...")
-        if ejecutar_ffmpeg(url_final, clave_decripcion, nombre_archivo):
+        if ejecutar_ffmpeg_mejorado(url_final, clave_decripcion, nombre_archivo, streams_data):
             print(f"\n¡Descarga completada! Guardado como: {nombre_archivo}")
         else:
             print("\nError en la descarga")
